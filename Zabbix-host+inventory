@@ -1,0 +1,97 @@
+import csv
+from pyzabbix import ZabbixAPI
+
+# Zabbix API connection details
+ZABBIX_URL = ''# ur Zabbix URL
+ZABBIX_USER = ''#ur Zabbix username 
+ZABBIX_PASSWORD = ''#ur Zabbix Password
+
+# Connect to Zabbix API
+zapi = ZabbixAPI(ZABBIX_URL)
+zapi.login(ZABBIX_USER, ZABBIX_PASSWORD)
+
+# Function to get group ID by name
+def get_group_id(group_name):
+    groups = zapi.hostgroup.get(filter={"name": group_name})
+    if groups:
+        return groups[0]['groupid']
+    return None
+
+# Function to get host ID by hostname (case insensitive)
+def get_host_id(hostname):
+    hosts = zapi.host.get(filter={"host": {"like": hostname.strip()}})
+    if hosts:
+        return hosts[0]['hostid']
+    return None
+
+# Function to create a new host with inventory details
+def create_host_with_inventory(hostname, group_id, device_name, device_type, os, serial_no, tag, mac):
+    result = zapi.host.create(
+        host=hostname,
+        groups=[{"groupid": group_id}],
+        interfaces=[],  # No interfaces specified
+        inventory={
+            "name": device_name,
+            "type": device_type,
+            "os": os,
+            "serialno_a": serial_no,
+            "macaddress_a": mac,
+            "tag": tag
+        }
+    )
+    return result['hostids'][0] if 'hostids' in result else None
+
+# Open CSV file
+with open('.csv', mode='r', encoding='utf-8-sig') as file:#give  ur CSV file
+    reader = csv.DictReader(file)
+    
+    # Print the header to verify
+    print("CSV Header:", reader.fieldnames)
+    
+    for row in reader:
+        hostname = row.get('Host', '').strip()
+        group_name = row.get('Group', '').strip()
+        device_name = row.get('Name', '').strip()
+        device_type = row.get('Type', '').strip()
+        os = row.get('OS', '').strip()
+        serial_no = row.get('Serial No', '').strip()
+        tag = row.get('Tag', '').strip()
+        mac = row.get('MAC', '').strip()
+
+        # Debugging: Print fields
+        print(f"Processing hostname: '{hostname}'")
+        print(f"Group: '{group_name}'")
+        print(f"Name: '{device_name}'")
+        print(f"Type: '{device_type}'")
+        print(f"OS: '{os}'")
+        print(f"Serial No: '{serial_no}'")
+        print(f"Tag: '{tag}'")
+        print(f"MAC: '{mac}'")
+
+        try:
+            # Get group ID
+            group_id = get_group_id(group_name) if group_name else None
+
+            if group_id:
+                # Check if the host exists
+                host_id = get_host_id(hostname)
+
+                if not host_id:
+                    # Create the host with inventory details if it doesn't exist
+                    host_id = create_host_with_inventory(
+                        hostname, group_id, device_name, device_type, os, serial_no, tag, mac
+                    )
+                    if host_id:
+                        print(f"Created host {hostname} with ID {host_id}")
+                    else:
+                        print(f"Failed to create host {hostname}")
+                else:
+                    print(f"Host {hostname} already exists with ID {host_id}")
+
+            else:
+                print(f"Group '{group_name}' not found")
+
+        except Exception as e:
+            print(f"Error updating host with hostname {hostname}: {e}")
+
+print("Host creation complete.")
